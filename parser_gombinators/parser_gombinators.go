@@ -24,18 +24,37 @@ import (
   "container/list"
 )
 
+// Parser parses its input and produces some result.
 type Parser func (ParserInput) ParserResult
 
+// ParserInput is anything that can produce a sequence of code points.
+// RuneArrayInput is one implementation that you can use. See StringToInput
+// if you want to create ParserInput directly from a string.
 type ParserInput interface {
+
+  // CurrentCodePoint returns the rune at the beginning of this input
   CurrentCodePoint () rune
+
+  // RemainingInput returns everything that comes after the current code point.
   RemainingInput () ParserInput
 }
 
+// ParserResult is the result of a parse along with the input that remains to
+// be parsed.
 type ParserResult struct {
-  Result interface{} // Parsing failed <==> result == nil
+
+  // Result can be anything except for nil which indicates that parsing failed.
+  // Parsing failed <==> Result == nil
+  Result interface{}
+
+  // RemainingInput is the rest of the input after the successful parse of
+  // Result. If the parse failed then it's just the input from before the
+  // parsing attempt.
   RemainingInput ParserInput
 }
 
+// ExpectCodePoint expects exactly one rune in the input. If the input
+// starts with this rune it will become the result.
 func ExpectCodePoint (expectedCodePoint rune) Parser {
   return func (input ParserInput) ParserResult {
     if expectedCodePoint == input.CurrentCodePoint () {
@@ -45,6 +64,10 @@ func ExpectCodePoint (expectedCodePoint rune) Parser {
   }
 }
 
+// ExpectCodePoints expects exactly the code points from the slice
+// expectedCodePoints at the beginning of the input in the given order.
+// If the input begins with these code points then expectedCodePoints will
+// be the result of the parse.
 func ExpectCodePoints (expectedCodePoints []rune) Parser {
   return func (input ParserInput) ParserResult {
     var RemainingInput = input
@@ -62,6 +85,9 @@ func ExpectCodePoints (expectedCodePoints []rune) Parser {
   }
 }
 
+// ExpectString expects the input to begin with the code points from the
+// expectedString in the given order. If the input starts with these code
+// points then expectedString will be the result of the parse.
 func ExpectString(expectedString string) Parser {
   return func(input ParserInput) ParserResult {
     var result = ExpectCodePoints ([]rune (expectedString)) (input)
@@ -73,6 +99,8 @@ func ExpectString(expectedString string) Parser {
   }
 }
 
+// Repeated applies a parser zero or more times and accumulates the results
+// of the parses in a list. This parse always produces a non-nil result.
 func (parser Parser) Repeated () Parser {
   return func (input ParserInput) ParserResult {
     var result = ParserResult { list.New (), input }
@@ -88,6 +116,7 @@ func (parser Parser) Repeated () Parser {
   }
 }
 
+// OnceOrMore is like Repeated except that it doesn't allow parsing zero times.
 func (parser Parser) OnceOrMore () Parser {
   return func (input ParserInput) ParserResult {
     var result = parser.Repeated () (input)
@@ -98,6 +127,12 @@ func (parser Parser) OnceOrMore () Parser {
   }
 }
 
+// RepeatAndFoldLeft is like Repeat except that it doesn't produce a list.
+// You can make RepeatAndFoldLeft implement Repeat by using the empty list as
+// the accumulator and PushBack as the combine function. The accumulator is
+// the initial value and every result of the parser will be added to the
+// accumulator using the combine function. See the calculator example for
+// an idiomatic use-case.
 func (parser Parser) RepeatAndFoldLeft (accumulator interface{},
                                 combine func (interface{},
                                               interface{}) interface{}) Parser {
@@ -115,6 +150,9 @@ func (parser Parser) RepeatAndFoldLeft (accumulator interface{},
   }
 }
 
+// Bind uses the result of a first parser to construct a second parser that
+// will parse the left-over input from the first parser. You can use this
+// to implement syntax annotations.
 func (parser Parser) Bind (constructor func (interface{}) Parser) Parser {
   return func (input ParserInput) ParserResult {
     var firstResult = parser (input)
@@ -123,6 +161,13 @@ func (parser Parser) Bind (constructor func (interface{}) Parser) Parser {
   }
 }
 
+// OrElse uses the first parser to parse the input. If this fails it will
+// use the second parser to parse the same input. Only use non-overlapping
+// parsers with this combinator! For the most part it's the usual alternative
+// except that it's first-come, first-served: if the first parser succeeds,
+// then it will not attempt to use the second parser and there's no
+// back-tracking. This is in contrast to most regex-libs where the longest
+// match wins. The first match wins here, please keep this in mind.
 func (parser Parser) OrElse (alternativeParser Parser) Parser {
   return func (input ParserInput) ParserResult {
     var FirstResult = parser (input)
@@ -133,11 +178,20 @@ func (parser Parser) OrElse (alternativeParser Parser) Parser {
   }
 }
 
+// Pair is a simple pair. Please use it only as an intermediate data structure.
+// If you know what you're parsing then convert your pairs into structs with
+// more meaningful names.
 type Pair struct {
+
+  // First is the first component of the pair.
   First interface {}
+
+  // Second is the second component of the pair.
   Second interface {}
 }
 
+// GetSecond extracts the second component of a pair or
+// returns the argument if it is not a pair.
 func GetSecond (argument interface {}) interface {} {
   var pair, isPair = argument.(Pair)
   if isPair {
@@ -146,6 +200,8 @@ func GetSecond (argument interface {}) interface {} {
   return argument
 }
 
+// GetFirst extracts the first component of a pair or
+// returns the argument if it is not a pair.
 func GetFirst (argument interface {}) interface {} {
   var pair, isPair = argument.(Pair)
   if isPair {
@@ -154,44 +210,60 @@ func GetFirst (argument interface {}) interface {} {
   return argument
 }
 
-func (FirstParser Parser) AndThen (SecondParser Parser) Parser {
+// AndThen applies the firstParser to the input and then the
+// secondParser. The result will be a Pair containing the results
+// of both parsers.
+func (firstParser Parser) AndThen (secondParser Parser) Parser {
   return func (input ParserInput) ParserResult {
-    var FirstResult = FirstParser (input)
-    if FirstResult.Result != nil {
-      var SecondResult = SecondParser (FirstResult.RemainingInput)
-      if SecondResult.Result != nil {
+    var firstResult = firstParser (input)
+    if firstResult.Result != nil {
+      var secondResult = secondParser (firstResult.RemainingInput)
+      if secondResult.Result != nil {
         return ParserResult {
-          Pair { FirstResult.Result, SecondResult.Result },
-          SecondResult.RemainingInput }
+          Pair { firstResult.Result, secondResult.Result },
+          secondResult.RemainingInput }
       }
-      return SecondResult
+      return secondResult
     }
-    return FirstResult
+    return firstResult
   }
 }
 
+// Convert applies the converter to the result of a successful parse.
+// If the parser fails then Convert won't do anything.
 func (parser Parser) Convert (
-                        Converter func (interface {}) interface {}) Parser {
+                        converter func (interface {}) interface {}) Parser {
   return func (input ParserInput) ParserResult {
     var result = parser (input)
     if result.Result != nil {
-      result.Result = Converter (result.Result)
+      result.Result = converter (result.Result)
     }
     return result
   }
 }
 
+// First extracts the first component of the result of a successful parse.
+// If the parser fails then First won't do anything.
 func (parser Parser) First () Parser {
   return parser.Convert (GetFirst)
 }
 
+// Second extracts the second component of the result of a successful parse.
+// If the parser fails then Second won't do anything.
 func (parser Parser) Second () Parser {
   return parser.Convert (GetSecond)
 }
 
+// Nothing is the result of successfully parsing nothing at all.
+// Don't confuse it with nil which indicates failure.
+// This Nothing type means that the parser has explicitly allowed
+// an empty input to be valid and to produce this result!
 type Nothing struct {}
 
-func (parser Parser) optional () Parser {
+// Optional applies the parser zero or one times to the input.
+// If the parser itself would fail then the Optional parser can still
+// produce a successful parse with the result Nothing{}.
+func (parser Parser) Optional () Parser {
   return func (input ParserInput) ParserResult {
     var result = parser (input)
     if result.Result == nil {
@@ -201,15 +273,20 @@ func (parser Parser) optional () Parser {
   }
 }
 
+// RuneArrayInput is an implementation of ParserInput.
+// You can use StringToInput to create instances of this type directly
+// from strings.
 type RuneArrayInput struct {
+
+  // Text is the whole input text. Please keep it unchanged while parsers are
+  // working on it.
   Text []rune
+
+  // CurrentPosition points to the current code point in the Text.
   CurrentPosition int
 }
 
-func StringToInput (Text string) ParserInput {
-  return &RuneArrayInput { []rune(Text), 0 }
-}
-
+// RemainingInput is necessary for RuneArrayInput to implement ParserInput
 func (input RuneArrayInput) RemainingInput () ParserInput {
   if input.CurrentPosition >= len (input.Text) {
     return nil
@@ -217,6 +294,7 @@ func (input RuneArrayInput) RemainingInput () ParserInput {
   return RuneArrayInput { input.Text, input.CurrentPosition + 1 }
 }
 
+// CurrentCodePoint is necessary for RuneArrayInput to implement ParserInput
 func (input RuneArrayInput) CurrentCodePoint () rune {
   if input.CurrentPosition >= len (input.Text) {
     return '\x00'
@@ -224,6 +302,11 @@ func (input RuneArrayInput) CurrentCodePoint () rune {
   return input.Text[input.CurrentPosition]
 }
 
+// StringToInput converts a string to a RuneArrayInput so you can use parsers
+// on it.
+func StringToInput (Text string) ParserInput {
+  return &RuneArrayInput { []rune(Text), 0 }
+}
 
 func isIdentifierStartChar (FirstCodePoint rune) bool {
   return rune ('a') <= FirstCodePoint && FirstCodePoint <= rune ('z') ||
@@ -244,6 +327,11 @@ func isSpaceChar (codePoint rune) bool {
         codePoint == rune ('\r') || codePoint == rune ('\t')
 }
 
+// ExpectSeveral accepts the first code point from the input if isFirstChar
+// returns true. After reading the first character, it takes all following code
+// points as long as they satisfy isLaterChar. It stops parsing the input at the
+// first code point that doesn't satisfy isLaterChar. ExpectSeveral will only
+// fail if the first character from the input doesn't satisfy isFirstChar!
 func ExpectSeveral (isFirstChar func (rune) bool,
                     isLaterChar func (rune) bool) Parser {
   return func (input ParserInput) ParserResult {
@@ -263,15 +351,21 @@ func ExpectSeveral (isFirstChar func (rune) bool,
   }
 }
 
+// ExpectIdentifier parses a [a-zA-Z_][a-zA-Z0-9_]* from the input.
 var ExpectIdentifier Parser =
   ExpectSeveral (isIdentifierStartChar, isIdentifierChar)
 
+// ExpectSpaces parses a [ \t\n\r]* from the input.
 var ExpectSpaces Parser =
-  ExpectSeveral (isSpaceChar, isSpaceChar).optional ()
+  ExpectSeveral (isSpaceChar, isSpaceChar).Optional ()
 
+// ExpectNumber parses a [0-9]+ from the input and the result will be a string.
+// You need to convert it into your favorite number type by yourself.
 var ExpectNumber Parser =
   ExpectSeveral (isDigit, isDigit)
 
+// MaybeSpacesBefore allows and ignores space characters before applying the
+// parser from the argument.
 func MaybeSpacesBefore (parser Parser) Parser {
   return Parser (ExpectSpaces).AndThen (parser).Second ()
 }
