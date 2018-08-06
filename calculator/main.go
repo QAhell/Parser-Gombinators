@@ -42,7 +42,7 @@ import (
  */
 
 func Multiplicand (input ParserInput) ParserResult {
-  return Parser (ExpectNumber.Convert(atoi)).OrElse (
+  return ExpectNumber.Convert(atoi).OrElse (
       expect ("(").AndThen (Expression).AndThen (expect (")")).
         First().Second()) (input)
 }
