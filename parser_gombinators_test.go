@@ -17,7 +17,7 @@
     along with Parser-Gombinators. If not, see <https://www.gnu.org/licenses/>.
 */
 
-package parser_gombinators
+package parse
 
 import (
   "testing"
