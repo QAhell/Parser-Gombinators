@@ -22,6 +22,9 @@ package parse
 import (
   "strings"
   "container/list"
+  "io"
+  "bufio"
+  "os"
 )
 
 // Parser parses its input and produces some result.
@@ -72,7 +75,7 @@ func ExpectCodePoints (expectedCodePoints []rune) Parser {
   return func (input ParserInput) ParserResult {
     var RemainingInput = input
     for _, expectedCodePoint := range expectedCodePoints {
-      if nil == RemainingInput.RemainingInput () {
+      if nil == RemainingInput {
         return ParserResult { nil, RemainingInput }
       }
       var result = ExpectCodePoint (expectedCodePoint) (RemainingInput)
@@ -268,9 +271,65 @@ func (parser Parser) Optional () Parser {
     var result = parser (input)
     if result.Result == nil {
       result.Result = Nothing {}
+      result.RemainingInput = input
     }
     return result
   }
+}
+
+// FileInput is an implementation of ParserInput
+// You can use FileToInput to create instances of this type directly
+// from a path.
+type FileInput struct {
+
+  // File is the underlying file of this parser input
+  File        io.RuneReader
+
+  // CurrentRune is the current character
+  CurrentRune rune
+
+  // RestOfInput is what remains after the CurrentRune
+  RestOfInput *FileInput
+}
+
+// FileToInput converts a RuneReader into a ParserInput.
+func FileToInput (file io.RuneReader) FileInput {
+  var r, _, err = file.ReadRune ()
+  if err != nil {
+    return FileInput { file, '\x00', nil }
+  }
+  return FileInput { file, r, nil }
+}
+
+// FilenameToInput opens a file and converts it into ParserInput.
+func FilenameToInput (filename string) FileInput {
+  var file, err = os.Open (filename)
+  if err != nil {
+    panic (err)
+  }
+  return FileToInput (bufio.NewReader (file))
+}
+
+// RemainingInput is necessary for FileInput to implement ParserInput
+func (input FileInput) RemainingInput () ParserInput {
+  if input.RestOfInput != nil {
+    return *(input.RestOfInput)
+  }
+  if input.File == nil {
+    return nil
+  }
+  var r, _, err = input.File.ReadRune ()
+  if err != nil {
+    input.File = nil
+    return nil
+  }
+  input.RestOfInput = &FileInput { input.File, r, nil }
+  return *input.RestOfInput
+}
+
+// CurrentCodePoint is necessary for FileInput to implement ParserInput
+func (input FileInput) CurrentCodePoint () rune {
+  return input.CurrentRune
 }
 
 // RuneArrayInput is an implementation of ParserInput.
@@ -282,13 +341,13 @@ type RuneArrayInput struct {
   // working on it.
   Text []rune
 
-  // CurrentPosition points to the current code point in the Text.
+  // CurrentPosition points to the current code point in the Text
   CurrentPosition int
 }
 
 // RemainingInput is necessary for RuneArrayInput to implement ParserInput
 func (input RuneArrayInput) RemainingInput () ParserInput {
-  if input.CurrentPosition >= len (input.Text) {
+  if input.CurrentPosition + 1 >= len (input.Text) {
     return nil
   }
   return RuneArrayInput { input.Text, input.CurrentPosition + 1 }
@@ -297,7 +356,7 @@ func (input RuneArrayInput) RemainingInput () ParserInput {
 // CurrentCodePoint is necessary for RuneArrayInput to implement ParserInput
 func (input RuneArrayInput) CurrentCodePoint () rune {
   if input.CurrentPosition >= len (input.Text) {
-    return '\x00'
+    return '\x00' // only happens with empty input now?!
   }
   return input.Text[input.CurrentPosition]
 }

@@ -43,8 +43,6 @@ func TestRuneArrayInput (t *testing.T) {
   testExpectedCharacterInInput (t, '猫', input)
   testExpectedCharacterInInput (t, '熊', input2)
   input = input.RemainingInput ()
-  testExpectedCharacterInInput (t, '\x00', input)
-  input = input.RemainingInput ()
   if input != nil {
     t.Errorf (
       "Expected the remaining input to be nil after the end of the input!")
@@ -139,7 +137,7 @@ func TestAndThen (t *testing.T) {
   result = parser (input)
   if result.Result.(Pair).First != "A" ||
     result.Result.(Pair).Second != "B" ||
-    result.RemainingInput.CurrentCodePoint () != rune ('\x00') {
+    result.RemainingInput != nil {
     t.Errorf ("Expected the parser to parse (A, B)!")
   }
   input = StringToInput ("ABC")
@@ -177,7 +175,6 @@ func TestExpectSpaces (t *testing.T) {
       result.RemainingInput.CurrentCodePoint () != rune ('A') {
     t.Errorf ("Expected the parser to parse nothing!")
   }
-
 }
 
 func TestExpectIdentifier (t *testing.T) {
@@ -220,13 +217,23 @@ func TestRepeatAndFoldLeft (t *testing.T) {
 }
 
 func TestBind (t *testing.T) {
-  var parser = ExpectIdentifier.Bind (func (arg interface{}) Parser {
-      return MaybeSpacesBefore (ExpectString (arg.(string)))
+  var parser = ExpectIdentifier.Bind (func (identifier interface{}) Parser {
+      return MaybeSpacesBefore (ExpectString (identifier.(string)))
     })
   var input = StringToInput ("ning ning")
   var result = parser (input)
   if result.Result != "ning" ||
-    result.RemainingInput.CurrentCodePoint () != '\x00' {
+    result.RemainingInput != nil {
     t.Errorf ("Expected the parser to eat up the whole input!")
+  }
+}
+
+func TestFileInput (t *testing.T) {
+  var input = FilenameToInput ("test.txt")
+  var parser = ExpectString ("AB").AndThen(ExpectString("AB")).Second ()
+  var result = parser (input)
+  var next = result.RemainingInput.CurrentCodePoint ()
+  if next != rune ('C') || result.Result != "AB" {
+    t.Errorf ("Expected the parser to read until the C.")
   }
 }
