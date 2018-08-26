@@ -230,7 +230,7 @@ func TestBind (t *testing.T) {
 
 func TestFileInput (t *testing.T) {
   var input = FilenameToInput ("test.txt")
-  var parser = ExpectString ("AB").AndThen(ExpectString("AB")).Second ()
+  var parser = ExpectString("AD").OrElse(ExpectString ("AB")).AndThen(ExpectString("AB")).Second ()
   var result = parser (input)
   var next = result.RemainingInput.CurrentCodePoint ()
   if next != rune ('C') || result.Result != "AB" {

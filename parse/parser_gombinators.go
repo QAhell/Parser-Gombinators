@@ -293,16 +293,16 @@ type FileInput struct {
 }
 
 // FileToInput converts a RuneReader into a ParserInput.
-func FileToInput (file io.RuneReader) FileInput {
+func FileToInput (file io.RuneReader) *FileInput {
   var r, _, err = file.ReadRune ()
   if err != nil {
-    return FileInput { file, '\x00', nil }
+    return &FileInput { file, '\x00', nil }
   }
-  return FileInput { file, r, nil }
+  return &FileInput { file, r, nil }
 }
 
 // FilenameToInput opens a file and converts it into ParserInput.
-func FilenameToInput (filename string) FileInput {
+func FilenameToInput (filename string) *FileInput {
   var file, err = os.Open (filename)
   if err != nil {
     panic (err)
@@ -311,9 +311,9 @@ func FilenameToInput (filename string) FileInput {
 }
 
 // RemainingInput is necessary for FileInput to implement ParserInput
-func (input FileInput) RemainingInput () ParserInput {
+func (input *FileInput) RemainingInput () ParserInput {
   if input.RestOfInput != nil {
-    return *(input.RestOfInput)
+    return input.RestOfInput
   }
   if input.File == nil {
     return nil
@@ -324,11 +324,11 @@ func (input FileInput) RemainingInput () ParserInput {
     return nil
   }
   input.RestOfInput = &FileInput { input.File, r, nil }
-  return *input.RestOfInput
+  return input.RestOfInput
 }
 
 // CurrentCodePoint is necessary for FileInput to implement ParserInput
-func (input FileInput) CurrentCodePoint () rune {
+func (input *FileInput) CurrentCodePoint () rune {
   return input.CurrentRune
 }
 
