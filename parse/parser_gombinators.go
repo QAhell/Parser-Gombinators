@@ -394,6 +394,9 @@ func isSpaceChar (codePoint rune) bool {
 func ExpectSeveral (isFirstChar func (rune) bool,
                     isLaterChar func (rune) bool) Parser {
   return func (input ParserInput) ParserResult {
+    if nil == input {
+      return ParserResult { nil, input }
+    }
     var FirstCodePoint = input.CurrentCodePoint ()
     if !isFirstChar (FirstCodePoint) {
       return ParserResult { nil, input }
@@ -404,7 +407,11 @@ func ExpectSeveral (isFirstChar func (rune) bool,
     for isLaterChar (codePoint) {
       builder.WriteRune (codePoint)
       RemainingInput = RemainingInput.RemainingInput ()
-      codePoint = RemainingInput.CurrentCodePoint ()
+      if RemainingInput == nil {
+        break
+      } else {
+        codePoint = RemainingInput.CurrentCodePoint ()
+      }
     }
     return ParserResult { builder.String (), RemainingInput }
   }

@@ -22,7 +22,7 @@ package main
 import (
   "os"
   "fmt"
-  . "private/alf42red/parser_gombinators"
+  . "github.com/QAhell/Parser-Gombinators/parse"
   . "strconv"
 )
 
@@ -85,7 +85,7 @@ func main () {
     var result, isInteger = parserResult.Result.(int)
     if isInteger {
       fmt.Printf ("result = %d\n", result)
-      if rune ('\x00') != parserResult.RemainingInput.CurrentCodePoint () {
+      if nil != parserResult.RemainingInput {
         var inp = parserResult.RemainingInput.(RuneArrayInput)
         var rest = inp.Text[inp.CurrentPosition:]
         fmt.Printf ("There's some remaining input: %s\n", string (rest))
