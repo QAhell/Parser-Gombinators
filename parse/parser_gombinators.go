@@ -67,6 +67,24 @@ func ExpectCodePoint (expectedCodePoint rune) Parser {
   }
 }
 
+// Fail just is a failing parser. No tricks.
+var Fail Parser = func (input ParserInput) ParserResult {
+  return ParserResult { nil, input }
+}
+
+// ExpectNotCodePoint expects exactly one rune in the input that does not
+// appear in the forbiddenCodePoints.
+func ExpectNotCodePoint (forbiddenCodePoints []rune) Parser {
+  return func (input ParserInput) ParserResult {
+    for _, forbiddenCodePoint := range forbiddenCodePoints {
+      if input.CurrentCodePoint () == forbiddenCodePoint {
+        return ParserResult { nil, input }
+      }
+    }
+    return ParserResult { input.CurrentCodePoint (), input.RemainingInput () }
+  }
+}
+
 // ExpectCodePoints expects exactly the code points from the slice
 // expectedCodePoints at the beginning of the input in the given order.
 // If the input begins with these code points then expectedCodePoints will
@@ -364,7 +382,7 @@ func (input RuneArrayInput) CurrentCodePoint () rune {
 // StringToInput converts a string to a RuneArrayInput so you can use parsers
 // on it.
 func StringToInput (Text string) ParserInput {
-  return &RuneArrayInput { []rune(Text), 0 }
+  return RuneArrayInput { []rune(Text), 0 }
 }
 
 func isIdentifierStartChar (FirstCodePoint rune) bool {
